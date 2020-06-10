@@ -8,7 +8,9 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import com.mapbox.geojson.Feature;
 import com.mapbox.geojson.FeatureCollection;
+import com.mapbox.geojson.Point;
 import com.mapbox.geojson.Polygon;
+import com.mapbox.mapboxsdk.camera.CameraUpdateFactory;
 import com.mapbox.mapboxsdk.geometry.LatLng;
 import com.mapbox.mapboxsdk.geometry.LatLngBounds;
 import com.mapbox.mapboxsdk.maps.MapboxMap;
@@ -23,6 +25,8 @@ import org.json.JSONObject;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.List;
 
 import ir.map.sdk_map.MapirStyle;
 import ir.map.sdk_map.maps.MapView;
@@ -34,13 +38,6 @@ public class MainActivity extends AppCompatActivity {
     MapboxMap map;
     Style mapStyle;
     MapView mapView;
-
-    private static final LatLng BOUND_CORNER_NW = new LatLng(-8.491377105132457, 108.26584125231903);
-    private static final LatLng BOUND_CORNER_SE = new LatLng(-42.73740968175186, 158.19629538046348);
-    private static final LatLngBounds RESTRICTED_BOUNDS_AREA = new LatLngBounds.Builder()
-            .include(BOUND_CORNER_NW)
-            .include(BOUND_CORNER_SE)
-            .build();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -57,15 +54,35 @@ public class MainActivity extends AppCompatActivity {
                     @Override
                     public void onStyleLoaded(@NonNull Style style) {
                         mapStyle = style;
+
+                        addPolygon();
                     }
                 });
             }
         });
     }
 
-    private void addFillSourceAndLayerToMap() {
+    private void addPolygon() {
+        List<List<Point>> allPointList = new ArrayList<>();
+
+        //region create world polygon
+        List<Point> worldPoints = new ArrayList<>();
+
+        worldPoints.add(Point.fromLngLat(180, -90));
+        worldPoints.add(Point.fromLngLat(180, 90));
+        worldPoints.add(Point.fromLngLat(-180, 90));
+        worldPoints.add(Point.fromLngLat(-180, -90));
+        worldPoints.add(Point.fromLngLat(180, -90));
+
+        allPointList.add(worldPoints);
+        //endregion create world polygon
+
         //region Add source to map
-        Polygon polygon = Polygon.fromJson(readJSONFromAsset("tehran_polygon"));
+        String cityFeatureCollection = readJSONFromAsset("tehran_polygon").toString();
+
+        allPointList.add(((Polygon) FeatureCollection.fromJson(cityFeatureCollection).features().get(0).geometry()).coordinates().get(0));
+
+        Polygon polygon = Polygon.fromLngLats(allPointList);
 
         FeatureCollection featureCollection = FeatureCollection.fromFeature(Feature.fromGeometry(polygon));
         GeoJsonSource geoJsonSource = new GeoJsonSource("sample_source_id", featureCollection);
@@ -75,24 +92,35 @@ public class MainActivity extends AppCompatActivity {
 
         //region  Add layer to map
         FillLayer fillLayer = new FillLayer("sample_layer_id", "sample_source_id");
-        fillLayer.setProperties(
-                PropertyFactory.fillColor(Color.GREEN),
-                PropertyFactory.fillOpacity(.5f)
-        );
+        fillLayer.setProperties(PropertyFactory.fillColor(Color.WHITE));
 
         mapStyle.addLayer(fillLayer);
         //endregion  Add layer to map
+
+        //region Bind view to polygon region
+        LatLng BOUND_CORNER_NW = new LatLng(36.20, 50.25);
+        LatLng BOUND_CORNER_SE = new LatLng(34.82, 53.27);
+        LatLng CENTER_POLYGON = new LatLng(35.61711, 51.83349);
+        LatLngBounds RESTRICTED_BOUNDS_AREA = new LatLngBounds.Builder()
+                .include(BOUND_CORNER_NW)
+                .include(BOUND_CORNER_SE)
+                .build();
+
+        map.setLatLngBoundsForCameraTarget(RESTRICTED_BOUNDS_AREA);
+        map.setMinZoomPreference(6.4);
+        map.animateCamera(CameraUpdateFactory.newLatLngZoom(CENTER_POLYGON, 6.4));
+        //endregion Bind view to polygon region
     }
 
-    public String readJSONFromAsset(String fileName) {
+    public JSONObject readJSONFromAsset(String fileName) {
         try {
             InputStream is = getAssets().open(fileName + ".json");
             int size = is.available();
             byte[] buffer = new byte[size];
             is.read(buffer);
             is.close();
-            return new String(buffer, UTF_8);
-        } catch (IOException ex) {
+            return new JSONObject(new String(buffer, UTF_8));
+        } catch (IOException | JSONException ex) {
             ex.printStackTrace();
             return null;
         }
